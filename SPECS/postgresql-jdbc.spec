@@ -31,12 +31,13 @@
 Summary:	JDBC driver for PostgreSQL
 Name:		postgresql-jdbc
 Version:	42.2.14
-Release:	2%{?dist}
+Release:	3%{?dist}
 License:	BSD
 URL:		http://jdbc.postgresql.org/
 
 Source0:	https://repo1.maven.org/maven2/org/postgresql/postgresql/%{version}/postgresql-%{version}-src.tar.gz
 Patch0:	postgresql-jdbc-CVE-2022-41946.patch
+Patch1:	postgresql-jdbc-CVE-2024-1597.patch
 Provides:	pgjdbc = %version-%release
 
 BuildArch:	noarch
@@ -66,7 +67,8 @@ This package contains the API Documentation for %{name}.
 
 %prep
 %setup -c -q
-%patch0 -p1
+%patch -P 0 -p1
+%patch -P 1 -p2
 
 # remove any binary libs
 find -type f \( -name "*.jar" -or -name "*.class" \) | xargs rm -f
@@ -105,6 +107,9 @@ find -type f \( -name "*.jar" -or -name "*.class" \) | xargs rm -f
 
 
 %changelog
+* Wed Feb 28 2024 Zuzana Miklankova <zmiklank@redhat.com> - 42.2.14-3
+- Fix CVE-2024-1597
+
 * Mon Jan 09 2023 Zuzana Miklankova <zmiklank@redhat.com> - 42.2.14-2
 - Fix CVE-2022-41946
 
