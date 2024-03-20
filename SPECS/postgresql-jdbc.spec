@@ -48,7 +48,7 @@
 
 Summary:	JDBC driver for PostgreSQL
 Name:		postgresql-jdbc
-Version:  42.2.27
+Version:  42.2.28
 Release:	1%{?dist}
 License:	BSD
 URL:		http://jdbc.postgresql.org/
@@ -165,6 +165,10 @@ opts="-f"
 
 
 %changelog
+* Wed Feb 28 2024 Zuzana Miklankova <zmiklank@redhat.com> - 42.2.28-1
+- rebase to 42.2.28
+- fix for CVE-2024-1597
+
 * Tue Jan 03 2023 Zuzana Miklankova <zmiklank@redhat.com> - 42.2.27-1
 - rebase to 42.2.27
 - fix for CVE-2022-41946
