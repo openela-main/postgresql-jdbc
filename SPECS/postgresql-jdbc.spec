@@ -49,7 +49,7 @@
 Summary:	JDBC driver for PostgreSQL
 Name:		postgresql-jdbc
 Version:  42.2.28
-Release:	1%{?dist}
+Release:	2%{?dist}
 License:	BSD
 URL:		http://jdbc.postgresql.org/
 
@@ -65,6 +65,7 @@ BuildRequires:  maven-plugin-bundle
 BuildRequires:	classloader-leak-test-framework
 
 BuildRequires:	mvn(com.ongres.scram:client)
+BuildRequires:	mvn(org.apache.maven.plugins:maven-shade-plugin)
 BuildRequires:	mvn(org.apache.maven.surefire:surefire-junit-platform)
 BuildRequires:	mvn(org.junit.jupiter:junit-jupiter-api)
 BuildRequires:	mvn(org.junit.jupiter:junit-jupiter-engine)
@@ -80,6 +81,9 @@ BuildRequires:	postgresql-test-rpm-macros
 #BuildRequires:	gettext
 
 Obsoletes:	%{name}-parent-poms < 42.2.2-2
+
+Provides:	bundled(mvn(com.ongres.scram:client)) = 1.9.beta1
+Provides:	bundled(mvn(com.ongres.scram:common)) = 1.9.beta1
 
 %description
 PostgreSQL is an advanced Object-Relational database management
@@ -101,9 +105,6 @@ mv postgresql-%{version}-jdbc-src/* .
 
 # remove any binary libs
 find -type f \( -name "*.jar" -or -name "*.class" \) | xargs rm -f
-
-# Build parent POMs in the same Maven call.
-%pom_xpath_remove "pom:plugin[pom:artifactId = 'maven-shade-plugin']"
 
 %pom_remove_plugin -r :maven-javadoc-plugin
 
@@ -165,6 +166,9 @@ opts="-f"
 
 
 %changelog
+* Fri Jan 09 2026 Marian Koncek <mkoncek@redhat.com> - 42.2.28-2
+- Bundle shaded ongres-* dependencies
+
 * Wed Feb 28 2024 Zuzana Miklankova <zmiklank@redhat.com> - 42.2.28-1
 - rebase to 42.2.28
 - fix for CVE-2024-1597
