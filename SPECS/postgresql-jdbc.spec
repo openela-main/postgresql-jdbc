@@ -48,8 +48,8 @@
 
 Summary:        JDBC driver for PostgreSQL
 Name:           postgresql-jdbc
-Version:        42.7.1
-Release:        8%{?dist}
+Version:        42.7.2
+Release:        1%{?dist}
 License:        BSD-2-Clause
 URL:            https://jdbc.postgresql.org/
 Source0:        https://repo1.maven.org/maven2/org/postgresql/postgresql/%{version}/postgresql-%{version}-jdbc-src.tar.gz
@@ -62,6 +62,7 @@ BuildRequires:  maven-local
 BuildRequires:  mvn(com.ongres.scram:client)
 BuildRequires:  mvn(junit:junit)
 BuildRequires:  mvn(org.apache.maven.plugins:maven-dependency-plugin)
+BuildRequires:  mvn(org.apache.maven.plugins:maven-shade-plugin)
 BuildRequires:  mvn(org.junit.jupiter:junit-jupiter-api)
 BuildRequires:  mvn(se.jiderhamn:classloader-leak-test-framework)
 
@@ -74,6 +75,11 @@ BuildRequires:  postgresql-test-rpm-macros
 #BuildRequires:    gettext
 
 Obsoletes:      %{name}-parent-poms < 42.2.2-2
+
+Provides:       bundled(mvn(com.ongres.stringprep:saslprep)) = 1.1
+Provides:       bundled(mvn(com.ongres.stringprep:stringprep)) = 1.1
+Provides:       bundled(mvn(com.ongres.scram:common)) = 2.1
+Provides:       bundled(mvn(com.ongres.scram:client)) = 2.1
 
 %description
 PostgreSQL is an advanced Object-Relational database management
@@ -93,9 +99,6 @@ mv postgresql-%{version}-jdbc-src/* .
 
 # remove any binary libs
 find -type f \( -name "*.jar" -or -name "*.class" \) | xargs rm -f
-
-# Build parent POMs in the same Maven call.
-%pom_xpath_remove "pom:plugin[pom:artifactId = 'maven-shade-plugin']"
 
 # compat symlink: requested by dtardon (libreoffice), reverts part of
 # 0af97ce32de877 commit.
@@ -163,6 +166,13 @@ opts="-f"
 %license LICENSE
 
 %changelog
+* Tue Apr 07 2026 Marian Koncek <mkoncek@redhat.com> - 42.7.2-1
+- Rebase to 42.7.2
+- Resolves: CVE-2024-1597
+
+* Fri Jan 09 2026 Marian Koncek <mkoncek@redhat.com> - 42.7.1-9
+- Bundle shaded ongres-* dependencies
+
 * Tue Apr 01 2025 Marián Konček <mkoncek@redhat.com> - 42.7.1-8
 - Fix BuildRequires
 
