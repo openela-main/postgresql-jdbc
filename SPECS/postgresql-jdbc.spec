@@ -49,11 +49,15 @@
 Summary:	JDBC driver for PostgreSQL
 Name:		postgresql-jdbc
 Version:  42.2.28
-Release:	2%{?dist}
+Release:	2%{?dist}.2
 License:	BSD
 URL:		http://jdbc.postgresql.org/
 
 Source0:	https://repo1.maven.org/maven2/org/postgresql/postgresql/%{version}/postgresql-%{version}-jdbc-src.tar.gz
+
+# https://github.com/pgjdbc/pgjdbc/commit/c9d41d1332a7426fcef19ff89f2e6b1116429143
+Patch0:		RHEL-173489.patch
+Patch1:		CVE-2026-42198-tests.patch
 
 Provides:	pgjdbc = %version-%release
 
@@ -102,6 +106,9 @@ This package contains the API Documentation for %{name}.
 %setup -c -q
 
 mv postgresql-%{version}-jdbc-src/* .
+
+%patch -P0 -p2
+%patch -P1 -p1
 
 # remove any binary libs
 find -type f \( -name "*.jar" -or -name "*.class" \) | xargs rm -f
@@ -166,6 +173,13 @@ opts="-f"
 
 
 %changelog
+* Tue May 19 2026 Marian Koncek <mkoncek@redhat.com> - 42.2.28-2.2
+- Add tests for CVE-2026-42198
+
+* Mon May 11 2026 RHEL Packaging Agent <redhat-ymir-agent@redhat.com> - 42.2.28-2.1
+- Fix CVE-2026-42198: limit SCRAM PBKDF2 iterations to prevent DoS
+- Resolves: RHEL-173489
+
 * Fri Jan 09 2026 Marian Koncek <mkoncek@redhat.com> - 42.2.28-2
 - Bundle shaded ongres-* dependencies
 
