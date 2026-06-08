@@ -49,12 +49,17 @@
 Summary:        JDBC driver for PostgreSQL
 Name:           postgresql-jdbc
 Version:        42.7.2
-Release:        1%{?dist}
+Release:        1%{?dist}.2
 License:        BSD-2-Clause
 URL:            https://jdbc.postgresql.org/
-Source0:        https://repo1.maven.org/maven2/org/postgresql/postgresql/%{version}/postgresql-%{version}-jdbc-src.tar.gz
 BuildArch:      noarch
 ExclusiveArch:  %{java_arches} noarch
+
+Source0:        https://repo1.maven.org/maven2/org/postgresql/postgresql/%{version}/postgresql-%{version}-jdbc-src.tar.gz
+
+# https://github.com/pgjdbc/pgjdbc/commit/c9d41d1332a7426fcef19ff89f2e6b1116429143
+Patch0:         RHEL-173479.patch
+Patch1:         CVE-2026-42198-tests.patch
 
 Provides:       pgjdbc = %version-%release
 
@@ -96,6 +101,9 @@ This package contains the API Documentation for %{name}.
 %setup -c -q
 
 mv postgresql-%{version}-jdbc-src/* .
+
+%patch -P0 -p1
+%patch -P1 -p1
 
 # remove any binary libs
 find -type f \( -name "*.jar" -or -name "*.class" \) | xargs rm -f
@@ -166,6 +174,13 @@ opts="-f"
 %license LICENSE
 
 %changelog
+* Wed May 20 2026 Marian Koncek <mkoncek@redhat.com> - 42.7.2-1.2
+- Add tests for CVE-2026-42198
+
+* Mon May 11 2026 RHEL Packaging Agent <redhat-ymir-agent@redhat.com> - 42.7.2-1.1
+- Limit SCRAM PBKDF2 iterations to prevent DoS via malicious server
+- Resolves: RHEL-173479
+
 * Tue Apr 07 2026 Marian Koncek <mkoncek@redhat.com> - 42.7.2-1
 - Rebase to 42.7.2
 - Resolves: CVE-2024-1597

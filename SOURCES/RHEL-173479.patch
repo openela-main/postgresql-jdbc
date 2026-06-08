@@ -1,0 +1,159 @@
+From e2f3f886e23e76410a696ad13594387a55c6281c Mon Sep 17 00:00:00 2001
+From: Sehrope Sarkuni <sehrope@jackdb.com>
+Date: Sat, 18 Apr 2026 08:20:17 -0400
+Subject: [PATCH] fix: Limit SCRAM PBKDF2 iterations accepted from the server
+
+A malicious or compromised PostgreSQL server can advertise an
+arbitrarily large PBKDF2 iteration count in its SCRAM
+server-first-message, forcing the client to burn CPU inside
+clientFinalMessage() before authentication can possibly fail. Combined
+with an abandoned connect-thread on loginTimeout expiry, that CPU
+continues spinning after the caller has given up.
+
+We add a new `scramMaxIterations` connection property (default 100000)
+and validate the iteration count from ServerFirstMessage against it
+after parsing but before the PBKDF2-heavy clientFinalMessage() step.
+Exceeding the cap throws a PSQLException with CONNECTION_REJECTED and
+an error message naming the property so operators can raise it for
+trusted servers that legitimately use a higher count.
+
+Fixes CVE-2026-42198
+---
+ .../src/main/java/org/postgresql/PGProperty.java | 14 ++++++++++++++
+ .../core/v3/ConnectionFactoryImpl.java           |  9 ++++++++-
+ .../org/postgresql/ds/common/BaseDataSource.java | 16 ++++++++++++++++
+ .../postgresql/jre7/sasl/ScramAuthenticator.java | 15 ++++++++++++++-
+ 4 files changed, 52 insertions(+), 2 deletions(-)
+
+diff --git a/src/main/java/org/postgresql/PGProperty.java b/src/main/java/org/postgresql/PGProperty.java
+index da11f66d..7f7b6e00 100644
+--- a/src/main/java/org/postgresql/PGProperty.java
++++ b/src/main/java/org/postgresql/PGProperty.java
+@@ -554,6 +554,20 @@ public enum PGProperty {
+       "false",
+       "Enable optimization to rewrite and collapse compatible INSERT statements that are batched."),
+ 
++  /**
++   * Maximum number of PBKDF2 iterations the client will accept from the server during SCRAM
++   * authentication. If the server advertises more iterations than this value, authentication
++   * is rejected before the expensive PBKDF2 computation runs. This mitigates a denial-of-service
++   * vector where a malicious or compromised server forces the client to burn CPU on an
++   * attacker-controlled iteration count. Must be a non-negative integer. Defaults to 100000. Raise
++   * only if you know you are connecting to a trusted server that legitimately uses a higher
++   * iteration count. A value of zero disables this check.
++   */
++  SCRAM_MAX_ITERATIONS(
++      "scramMaxIterations",
++      "100000",
++      "Maximum PBKDF2 iteration count accepted from the server during SCRAM authentication. A value of zero disables this check."),
++
+   /**
+    * Socket write buffer size (SO_SNDBUF). A value of {@code -1}, which is the default, means system
+    * default.
+diff --git a/src/main/java/org/postgresql/core/v3/ConnectionFactoryImpl.java b/src/main/java/org/postgresql/core/v3/ConnectionFactoryImpl.java
+index bc0af8e4..9fbe7eba 100644
+--- a/src/main/java/org/postgresql/core/v3/ConnectionFactoryImpl.java
++++ b/src/main/java/org/postgresql/core/v3/ConnectionFactoryImpl.java
+@@ -836,6 +836,13 @@ public class ConnectionFactoryImpl extends ConnectionFactory {
+ 
+               case AUTH_REQ_SASL:
+                 LOGGER.log(Level.FINEST, " <=BE AuthenticationSASL");
++                int scramMaxIterations = PGProperty.SCRAM_MAX_ITERATIONS.getInt(info);
++                if (scramMaxIterations < 0) {
++                  throw new PSQLException(
++                      GT.tr("{0} must be a non-negative integer, but was: {1}",
++                          PGProperty.SCRAM_MAX_ITERATIONS.getName(), scramMaxIterations),
++                      PSQLState.INVALID_PARAMETER_VALUE);
++                }
+ 
+                 scramAuthenticator = AuthenticationPluginManager.withPassword(AuthenticationRequestType.SASL, info, password -> {
+                   if (password == null) {
+@@ -850,7 +857,7 @@ public class ConnectionFactoryImpl extends ConnectionFactory {
+                             "The server requested SCRAM-based authentication, but the password is an empty string."),
+                         PSQLState.CONNECTION_REJECTED);
+                   }
+-                  return new ScramAuthenticator(user, String.valueOf(password), pgStream);
++                  return new ScramAuthenticator(user, String.valueOf(password), pgStream, scramMaxIterations);
+                 });
+                 scramAuthenticator.processServerMechanismsAndInit();
+                 scramAuthenticator.sendScramClientFirstMessage();
+diff --git a/src/main/java/org/postgresql/ds/common/BaseDataSource.java b/src/main/java/org/postgresql/ds/common/BaseDataSource.java
+index c3b606fa..6416bd97 100644
+--- a/src/main/java/org/postgresql/ds/common/BaseDataSource.java
++++ b/src/main/java/org/postgresql/ds/common/BaseDataSource.java
+@@ -1325,6 +1325,22 @@ public abstract class BaseDataSource implements CommonDataSource, Referenceable
+     PGProperty.LOGGER_FILE.set(properties, loggerFile);
+   }
+ 
++  /**
++   * @return maximum PBKDF2 iteration count accepted during SCRAM authentication
++   * @see PGProperty#SCRAM_MAX_ITERATIONS
++   */
++  public int getScramMaxIterations() {
++    return PGProperty.SCRAM_MAX_ITERATIONS.getIntNoCheck(properties);
++  }
++
++  /**
++   * @param scramMaxIterations maximum PBKDF2 iteration count accepted during SCRAM authentication
++   * @see PGProperty#SCRAM_MAX_ITERATIONS
++   */
++  public void setScramMaxIterations(int scramMaxIterations) {
++    PGProperty.SCRAM_MAX_ITERATIONS.set(properties, scramMaxIterations);
++  }
++
+   /**
+    * Generates a {@link DriverManager} URL from the other properties supplied.
+    *
+diff --git a/src/main/java/org/postgresql/jre7/sasl/ScramAuthenticator.java b/src/main/java/org/postgresql/jre7/sasl/ScramAuthenticator.java
+index ff96106a..05fc2d19 100644
+--- a/src/main/java/org/postgresql/jre7/sasl/ScramAuthenticator.java
++++ b/src/main/java/org/postgresql/jre7/sasl/ScramAuthenticator.java
+@@ -7,6 +7,7 @@ package org.postgresql.jre7.sasl;
+ 
+ import static org.postgresql.util.internal.Nullness.castNonNull;
+ 
++import org.postgresql.PGProperty;
+ import org.postgresql.core.PGStream;
+ import org.postgresql.util.GT;
+ import org.postgresql.util.PSQLException;
+@@ -34,6 +35,7 @@ public class ScramAuthenticator {
+   private final String user;
+   private final String password;
+   private final PGStream pgStream;
++  private final int maxIterations;
+   private /* @Nullable */ ScramClient scramClient;
+   private /* @Nullable */ ScramSession scramSession;
+   private ScramSession./* @Nullable */ ClientFinalProcessor clientFinalProcessor;
+@@ -50,10 +52,11 @@ public class ScramAuthenticator {
+     pgStream.flush();
+   }
+ 
+-  public ScramAuthenticator(String user, String password, PGStream pgStream) {
++  public ScramAuthenticator(String user, String password, PGStream pgStream, int maxIterations) {
+     this.user = user;
+     this.password = password;
+     this.pgStream = pgStream;
++    this.maxIterations = maxIterations;
+   }
+ 
+   public void processServerMechanismsAndInit() throws IOException, PSQLException {
+@@ -144,6 +147,16 @@ public class ScramAuthenticator {
+                  );
+     }
+ 
++    int iterations = serverFirstProcessor.getIteration();
++    if (maxIterations > 0 && iterations > maxIterations) {
++      throw new PSQLException(
++          GT.tr("Server requested {0} SCRAM PBKDF2 iterations, which exceeds the "
++              + "client-side limit of {1}. If you trust this server, raise the "
++              + "{2} connection property.",
++              iterations, maxIterations, PGProperty.SCRAM_MAX_ITERATIONS.getName()),
++          PSQLState.CONNECTION_REJECTED);
++    }
++
+     clientFinalProcessor = serverFirstProcessor.clientFinalProcessor(password);
+ 
+     String clientFinalMessage = clientFinalProcessor.clientFinalMessage();
+-- 
+2.52.0
+
