@@ -31,20 +31,22 @@
 Summary:	JDBC driver for PostgreSQL
 Name:		postgresql-jdbc
 Version:	42.2.14
-Release:	3%{?dist}
+Release:	4%{?dist}
 License:	BSD
 URL:		http://jdbc.postgresql.org/
 
 Source0:	https://repo1.maven.org/maven2/org/postgresql/postgresql/%{version}/postgresql-%{version}-src.tar.gz
 Patch0:	postgresql-jdbc-CVE-2022-41946.patch
 Patch1:	postgresql-jdbc-CVE-2024-1597.patch
+Patch2:	CVE-2026-42198.patch
+Patch3:	CVE-2026-42198-tests.patch
 Provides:	pgjdbc = %version-%release
 
 BuildArch:	noarch
 
 BuildRequires:	maven-local
-BuildRequires:	java-comment-preprocessor
-BuildRequires:	properties-maven-plugin
+# BuildRequires:	java-comment-preprocessor
+# BuildRequires:	properties-maven-plugin
 BuildRequires:	maven-enforcer-plugin
 BuildRequires:	maven-plugin-bundle
 BuildRequires:	maven-plugin-build-helper
@@ -69,6 +71,8 @@ This package contains the API Documentation for %{name}.
 %setup -c -q
 %patch -P 0 -p1
 %patch -P 1 -p2
+%patch -P 2 -p1
+%patch -P 3 -p1
 
 # remove any binary libs
 find -type f \( -name "*.jar" -or -name "*.class" \) | xargs rm -f
@@ -107,6 +111,10 @@ find -type f \( -name "*.jar" -or -name "*.class" \) | xargs rm -f
 
 
 %changelog
+* Mon Jun 08 2026 Marian Koncek <mkoncek@redhat.com> - 42.2.14-4
+- Limit SCRAM PBKDF2 iterations to prevent DoS via malicious server
+- Resolves: CVE-2026-42198
+
 * Wed Feb 28 2024 Zuzana Miklankova <zmiklank@redhat.com> - 42.2.14-3
 - Fix CVE-2024-1597
 
